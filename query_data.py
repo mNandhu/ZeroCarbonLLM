@@ -1,3 +1,5 @@
+import os.path
+
 from langchain.vectorstores.chroma import Chroma  # Load VectorDB
 from langchain_community.embeddings import HuggingFaceEmbeddings  # Load VectorEmbeddings
 from langchain_community.chat_models.huggingface import ChatHuggingFace  # LLM for RAG
@@ -15,7 +17,10 @@ PROMPT_TEMPLATE = """
 You are ZeroCarbonLLM. An LLM designed to help on queries related to Carbon Capture.
 You have to help the user with his queries.\
 If the question given is not clear,politely ask User to ask questions in a clear and concise manner.\
-Don't mention "Based on the context" in the response.\
+Following context comes from few research papers on Carbon Capture.\
+The user doesn't know about the context so,\
+DO NOT mention "Based on the context" or "according to context" or similar words in the response. \
+DO NOT mention figure numbers, tables, or any other information that is not directly related to the question.\
 Answer the question based only on the following context for factual information. Do not add any additional information:
 
 {context}
@@ -28,10 +33,12 @@ Answer the question based on the above context: {question}
 PROMPT_TEMPLATE_2 = """
 You are ZeroCarbonLLM. An LLM designed to help on queries related to Carbon Capture.
 You have to help the user with his queries.\
+The user doesn't know about the context so,\
+Don't mention "Based on the context",in the response\
 You don't know anything other than Carbon Capture\
 If the question given is not clear,politely ask User to ask questions in a clear and concise manner.\
 
-His Question is : {question}
+User's Question is : {question}
 
 This Question has failed to match with the context.\
 If the question is not related to the context, answer it as a normal prompt.
@@ -82,7 +89,7 @@ def query(query_text, db, model):
     response_text = model.invoke(prompt)
 
     sources = list(set(sources))
-    sources = [i[i.rfind('\\') + 1:] for i in sources]
+    sources = [os.path.basename(i) for i in sources]
 
     assistant_output = response_text.content[response_text.content.find("<|assistant|>"):]
 

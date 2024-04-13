@@ -6,14 +6,14 @@ from langchain.schema import Document  # DataType Reference
 from langchain_community.embeddings import HuggingFaceEmbeddings  # Embedding Function
 from langchain.vectorstores.chroma import Chroma  # Vector Storage
 
-import os      # For Path Reference
+import os  # For Path Reference
 import shutil  # Deleting Existing Vector Embeddings
 import timeit  # For Timing the Program
 from pymupdf_rag import to_markdown  # For Converting PDF to MD
 import fitz  # To Open PDFs
 
 CHROMA_PATH = "chroma"
-DATA_PATH = "data/pdfs"
+PDF_PATH = "data/pdfs"
 MARKDOWN_PATH = 'data/markdowns/'
 
 # Embedding uses model "all-MiniLM-L6-v2" by default
@@ -21,18 +21,19 @@ MARKDOWN_PATH = 'data/markdowns/'
 # Runs Locally
 embedding_function = HuggingFaceEmbeddings(model_name="all-mpnet-base-v2")
 
-# PDF TO MD
-# MD TO VectorEmbedding
-# VectorEmbedding to ChromaDb (Vector Data Base)
+
+# .pdf TO .md
+# .md TO Vector_Embedding
+# Vector_Embedding to ChromaDb (Vector Data Base)
 
 def main():
-    # pdf_to_md()
+    pdf_to_md()  # Comment this line if you have already converted the pdfs to markdowns
     generate_data_store()
 
 
 def pdf_to_md():
     from pathlib import Path
-    pdf_search = Path(DATA_PATH).glob("*.pdf")
+    pdf_search = Path(PDF_PATH).glob("*.pdf")
 
     for file in pdf_search:
         print(file.name)

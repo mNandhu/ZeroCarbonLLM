@@ -15,13 +15,13 @@ if 'past' not in st.session_state:
     st.session_state['past'] = []
 if 'messages' not in st.session_state:
     st.session_state['messages'] = [
-        {"role": "system", "content": "You are a helpful assistant."},]
+        {"role": "system", "content": "You are a helpful assistant."}, ]
 message("""\
 Hi, I am ZeroCarbonLLM. I am here to help you with your queries.\
 You can ask me anything related to Carbon Capture.\
 Currently, I am trained on a small dataset, so I may not be able to answer all your questions.\
 Please ask your questions in a clear and concise manner.\
-As of now, I can answer only one question at a time, and a very short-term memory.""", key='0_startup')
+As of now, I can answer only one question at a time, and have a very short-term memory.""", key='0_startup')
 
 
 # generate a response
@@ -29,9 +29,12 @@ def generate_response(prompt, database, query_model):
     st.session_state['messages'].append({"role": "user", "content": prompt})
 
     response, sources = query_data.query(prompt, database, query_model)
-    st.session_state['messages'].append({"role": "assistant", "content": response})
 
-    print(st.session_state['messages'])
+    if sources:
+        response += "\nSources : " + ','.join(sources)
+    st.session_state['messages'].append({"role": "assistant", "content": f'{response}'})
+
+    # print(st.session_state['messages'])
 
     return response
 
@@ -56,4 +59,3 @@ if st.session_state['generated']:
         for i in range(len(st.session_state['generated'])):
             message(st.session_state["past"][i], is_user=True, key=str(i) + '_user')
             message(st.session_state["generated"][i], key=str(i))
-
