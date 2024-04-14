@@ -31,7 +31,9 @@ def generate_response(prompt, database, query_model):
     response, sources = query_data.query(prompt, database, query_model)
 
     if sources:
-        response += "\nSources : " + ','.join(sources)
+        response += "\n\nSources : " + ', '.join(
+            [f"{index}.{source}" for index, source in enumerate(sources, start=1)])
+
     st.session_state['messages'].append({"role": "assistant", "content": f'{response}'})
 
     # print(st.session_state['messages'])

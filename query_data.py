@@ -14,7 +14,7 @@ warnings.simplefilter('ignore')
 CHROMA_PATH = "chroma"
 
 PROMPT_TEMPLATE = """
-You are ZeroCarbonLLM. An LLM designed to help on queries related to Carbon Capture.
+You are ZeroCarbonLLM. A Large Language Model designed to help on queries related to Carbon Capture.
 You have to help the user with his queries.\
 If the question given is not clear,politely ask User to ask questions in a clear and concise manner.\
 Following context comes from few research papers on Carbon Capture.\
@@ -31,17 +31,16 @@ Answer the question based on the above context: {question}
 """
 
 PROMPT_TEMPLATE_2 = """
-You are ZeroCarbonLLM. An LLM designed to help on queries related to Carbon Capture.
+You are ZeroCarbonLLM. A Large Language Model designed to help on queries related to Carbon Capture.
 You have to help the user with his queries.\
-The user doesn't know about the context so,\
-Don't mention "Based on the context",in the response\
 You don't know anything other than Carbon Capture\
 If the question given is not clear,politely ask User to ask questions in a clear and concise manner.\
 
 User's Question is : {question}
 
-This Question has failed to match with the context.\
-If the question is not related to the context, answer it as a normal prompt.
+This Question has failed to bring up any relevant results in your DataBase.\
+If the question is not related to the context, answer it as a normal prompt.\
+You are trained on a small dataset, so you may not be able to answer all the user's questions.
 """
 
 
@@ -88,8 +87,7 @@ def query(query_text, db, model):
     # Invoke model using Prompt Template
     response_text = model.invoke(prompt)
 
-    sources = list(set(sources))
-    sources = [os.path.basename(i) for i in sources]
+    sources = [f"{os.path.basename(i)}".replace(".md", ".pdf") for i in set(sources)]
 
     assistant_output = response_text.content[response_text.content.find("<|assistant|>"):]
 
