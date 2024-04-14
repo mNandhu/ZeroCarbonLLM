@@ -3,23 +3,28 @@
 from langchain_community.document_loaders import DirectoryLoader  # Load md files
 from langchain.text_splitter import RecursiveCharacterTextSplitter  # Split Document into Chunks
 from langchain.schema import Document  # DataType Reference
-from langchain_community.embeddings import HuggingFaceEmbeddings  # Embedding Function
+# from langchain_community.embeddings import HuggingFaceEmbeddings  # Embedding Function
+from langchain_community.embeddings.sentence_transformer import SentenceTransformerEmbeddings
 from langchain.vectorstores.chroma import Chroma  # Vector Storage
-
+import torch  # For CUDA
 import os  # For Path Reference
 import shutil  # Deleting Existing Vector Embeddings
 import timeit  # For Timing the Program
-from pymupdf_rag import to_markdown  # For Converting PDF to MD
+from modules.pymupdf_rag import to_markdown  # For Converting PDF to MD
 import fitz  # To Open PDFs
 
 CHROMA_PATH = "chroma"
 PDF_PATH = "data/pdfs"
 MARKDOWN_PATH = 'data/markdowns/'
 
+print(torch.cuda.is_available())
+
 # Embedding uses model "all-MiniLM-L6-v2" by default
 # Select Model from https://www.sbert.net/docs/pretrained_models.html
 # Runs Locally
-embedding_function = HuggingFaceEmbeddings(model_name="all-mpnet-base-v2")
+embedding_function = SentenceTransformerEmbeddings(model_name="all-mpnet-base-v2", multi_process=True,
+                                                   model_kwargs={"device": "cuda"},
+                                                   encode_kwargs={"normalize_embeddings": True})
 
 
 # .pdf TO .md
@@ -27,7 +32,7 @@ embedding_function = HuggingFaceEmbeddings(model_name="all-mpnet-base-v2")
 # Vector_Embedding to ChromaDb (Vector Data Base)
 
 def main():
-    pdf_to_md()  # Comment this line if you have already converted the pdfs to markdowns
+    # pdf_to_md()  # Comment this line if you have already converted the pdfs to markdowns
     generate_data_store()
 
 
