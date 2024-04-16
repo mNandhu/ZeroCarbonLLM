@@ -1,30 +1,33 @@
 # Back END
 # PDF -> MD -> VectorEmbedding
-from langchain_community.document_loaders import DirectoryLoader  # Load md files
-from langchain.text_splitter import RecursiveCharacterTextSplitter  # Split Document into Chunks
-from langchain.schema import Document  # DataType Reference
-# from langchain_community.embeddings import HuggingFaceEmbeddings  # Embedding Function
-from langchain_community.embeddings.sentence_transformer import SentenceTransformerEmbeddings
-from langchain.vectorstores.chroma import Chroma  # Vector Storage
-import torch  # For CUDA
-import os  # For Path Reference
+import os
 import shutil  # Deleting Existing Vector Embeddings
 import timeit  # For Timing the Program
-from modules.pymupdf_rag import to_markdown  # For Converting PDF to MD
-import fitz  # To Open PDFs
+
+from langchain_community.document_loaders import DirectoryLoader  # Load md files
+from langchain.text_splitter import RecursiveCharacterTextSplitter  # Split Document into Chunks
+from langchain.schema import Document
+
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+# from langchain_community.embeddings import HuggingFaceEmbeddings  # Embedding Function
+# from langchain_community.embeddings.sentence_transformer import SentenceTransformerEmbeddings
+from langchain.vectorstores.chroma import Chroma  # Vector Storage
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 CHROMA_PATH = "chroma"
 PDF_PATH = "data/pdfs"
 MARKDOWN_PATH = 'data/markdowns/'
 
-print(torch.cuda.is_available())
-
 # Embedding uses model "all-MiniLM-L6-v2" by default
 # Select Model from https://www.sbert.net/docs/pretrained_models.html
 # Runs Locally
-embedding_function = SentenceTransformerEmbeddings(model_name="all-mpnet-base-v2", multi_process=True,
-                                                   model_kwargs={"device": "cuda"},
-                                                   encode_kwargs={"normalize_embeddings": True})
+# embedding_function = SentenceTransformerEmbeddings(model_name="all-mpnet-base-v2", multi_process=True,
+#                                                    model_kwargs={"device": "cuda", },
+#                                                    encode_kwargs={"normalize_embeddings": True})
+embedding_function = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
 
 
 # .pdf TO .md
@@ -32,19 +35,24 @@ embedding_function = SentenceTransformerEmbeddings(model_name="all-mpnet-base-v2
 # Vector_Embedding to ChromaDb (Vector Data Base)
 
 def main():
-    # pdf_to_md()  # Comment this line if you have already converted the pdfs to markdowns
+    pdf_to_md(reset=False)  # Set reset to True if md should be replaced
     generate_data_store()
 
 
-def pdf_to_md():
+def pdf_to_md(reset=False):
+    import fitz  # To Open PDFs
     from pathlib import Path
+    from modules.pymupdf_rag import to_markdown  # For Converting PDF to MD
+
     pdf_search = Path(PDF_PATH).glob("*.pdf")
 
     for file in pdf_search:
-        print(file.name)
-        with open(MARKDOWN_PATH + file.name.replace('.pdf', '.md'), 'w', encoding="utf-8") as f:
-            doc = fitz.open(file)
-            f.write(to_markdown(doc))
+        if reset or not os.path.exists(MARKDOWN_PATH + file.name.replace('.pdf', '.md')):
+            print(f"Converting {file.name} to .md")
+            with open(MARKDOWN_PATH + file.name.replace('.pdf', '.md'), 'w', encoding="utf-8") as f:
+                doc = fitz.open(file)
+                md_text = to_markdown(doc).strip()
+                f.write(md_text)
 
 
 def generate_data_store():
@@ -64,10 +72,12 @@ def load_documents():
 
 def split_text(documents: list[Document]):
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=500,
-        chunk_overlap=100,
+        chunk_size=3500,
+        chunk_overlap=1000,
         length_function=len,
         add_start_index=True,
+        keep_separator=False,
+        strip_whitespace=True,
     )
     chunks = text_splitter.split_documents(documents)
     print(f"Split {len(documents)} documents into {len(chunks)} chunks.")

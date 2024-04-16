@@ -17,18 +17,26 @@ if 'messages' not in st.session_state:
 
 message(query_data.GREET_MESSAGE, key='0_startup')
 
-st.sidebar.title("Sidebar")
-model_name = st.sidebar.radio("Choose a model:", ("HuggingFace/zephyr-7b-beta", "gemini-1.0-pro"))
+st.sidebar.title("Settings")
+model_name = st.sidebar.radio("Choose a model:", query_data.ALL_MODELS).lower()
+k_queries = st.sidebar.slider("Queries to retrieve from db", 3, 20, 8,
+                              help="Number of Queries affects the accuracy of the model, depends on the documents "
+                                   "embedded")
+st.sidebar.write("KeyWord Extraction")
+use_hugging_for_kw = st.sidebar.checkbox("Use HuggingFaceLLM", value=True, help="Checking this box uses a remote "
+                                                                                "\"HuggingFace/zephyr-7b-beta\" model "
+                                                                                "to extract the "
+                                                                                "keywords from the prompt to "
+                                                                                "efficiently lookup in the database")
+
+use_keybert = st.sidebar.checkbox("Use KeyBert", help="Checking this box uses the Keybert module to extract the "
+                                                      "keywords. This does not use an LLM")
+use_keyllm = st.sidebar.checkbox("Use KeyLLM", help="Checking this box uses a local llama-2-7b model to extract the "
+                                                    "keywords from the prompt ")
 clear_button = st.sidebar.button("Clear Conversation", key="clear")
 
-if model_name == "HuggingFace/zephyr-7b-beta":
-    print("\n\nUsing HuggingFace model")
-    model = query_data.setup("HuggingFace")
-elif model_name == "gemini-1.0-pro":
-    print("\n\nUsing Gemini model")
-    model = query_data.setup("gemini-1.0-pro")
-else:
-    raise ValueError("Invalid model name")
+# Load the model
+query_data.load_model(model_name)
 
 # reset everything
 if clear_button:
@@ -41,15 +49,17 @@ if clear_button:
 
 
 # generate a response
-def generate_response(prompt, query_model):
+def generate_response(prompt, query_model_name, k, keybert, keyhugging, keyllm):
     st.session_state['messages'].append({"role": "user", "content": prompt})
 
-    response, sources = query_data.query(prompt, query_model)
+    response, sources = query_data.query(query_text=prompt, model_name=query_model_name, k=k, use_keybert=keybert,
+                                         use_hugging_for_kw=keyhugging, use_keyllm=keyllm)
 
     if sources:
         response += "\n\nSources : " + ', '.join(
             [f"{index}.{source}" for index, source in enumerate(sources, start=1)])
-
+    else:
+        response += "\n\nNote: No Sources used \n May not be entirely accurate"
     st.session_state['messages'].append({"role": "assistant", "content": f'{response}'})
 
     # print(st.session_state['messages'])
@@ -68,7 +78,8 @@ with container:
         submit_button = st.form_submit_button(label='Send')
 
     if submit_button and user_input:
-        output = generate_response(user_input, model)
+        output = generate_response(user_input, model_name, k_queries, keybert=use_keybert,
+                                   keyhugging=use_hugging_for_kw, keyllm=use_keyllm)
         st.session_state['past'].append(user_input)
         st.session_state['generated'].append(output)
 
