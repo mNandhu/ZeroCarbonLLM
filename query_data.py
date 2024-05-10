@@ -16,9 +16,8 @@ import timeit
 load_dotenv()
 warnings.simplefilter('ignore')
 
-kw_model = KeyBERT()
 kw_llm = None
-ALL_MODELS = ("HuggingFace", "gemini-1.0-pro", "llama-2-7b")
+ALL_MODELS = ("HuggingFace", "gemini-1.0-pro", "llama-2-7b", "ollama")
 ACTIVE_MODELS = dict.fromkeys([i.lower() for i in ALL_MODELS])
 
 ACTIVE_DB = None
@@ -92,23 +91,26 @@ As of now, I can answer only one question at a time, and have a very short-term 
 
 def prompt_model(prompt: str, model_name: str):
     model = load_model(model_name)
-    if model_name == "huggingface":
-        # HuggingFace
-        response_text = model.invoke(prompt)
-        assistant_output = response_text.content[response_text.content.rfind("<|assistant|>"):]
-        model_output = f"{assistant_output[13:]}".strip()
-    elif model_name == "gemini-1.0-pro":
-        # Gemini
-        model.send_message(prompt)
-        model_output = model.last.text
-    elif model_name == "llama-2-7b":
-        # Llama
-        print("LLAMA PROMPT: ", prompt[:200] + "...")
-        model_output = model.predict(prompt)
-        model_output = model_output[0]['generated_text']
-    else:
-        print(f"Invalid {model_name=}")
-        raise ValueError("Invalid Model")
+    match model_name:
+        case "huggingface":
+            # HuggingFace
+            response_text = model.invoke(prompt)
+            assistant_output = response_text.content[response_text.content.rfind("<|assistant|>"):]
+            model_output = f"{assistant_output[13:]}".strip()
+        case "gemini-1.0-pro":
+            # Gemini
+            model.send_message(prompt)
+            model_output = model.last.text
+        case "llama-2-7b":
+            # Llama
+            print("LLAMA PROMPT: ", prompt[:200] + "...")
+            model_output = model.predict(prompt)
+            model_output = model_output[0]['generated_text']
+        case "ollama":
+            model_output = model.invoke(prompt)
+        case _:
+            print(f"Invalid {model_name=}")
+            raise ValueError("Invalid Model")
     print("RESPONSE: ", model_output)
     return model_output
 
@@ -123,24 +125,26 @@ def get_db() -> Chroma:
     return db
 
 
-def load_model(model: str, *, reset=False) -> ChatHuggingFace | genai.ChatSession | transformers.Pipeline:
+def load_model(model_name: str, *, reset=False) -> ChatHuggingFace | genai.ChatSession | transformers.Pipeline:
     """
     Set up the model or reload ACTIVE_MODELS
-    :param model: Model Name
+    :param model_name: Model Name
     :param reset: Reload the models
     :return:
     """
-    model = model.lower()
-    if ACTIVE_MODELS[model] is None or reset:
-        if model == "huggingface":
-            ACTIVE_MODELS[model] = huggingface_setup()
-        elif model == "gemini-1.0-pro":
-            ACTIVE_MODELS[model] = gemini_v1_pro_setup()
-        elif model == "llama-2-7b":
-            ACTIVE_MODELS[model] = llama_setup()
+    model_name = model_name.lower()
+    if ACTIVE_MODELS[model_name] is None or reset:
+        if model_name == "huggingface":
+            ACTIVE_MODELS[model_name] = huggingface_setup()
+        elif model_name == "gemini-1.0-pro":
+            ACTIVE_MODELS[model_name] = gemini_v1_pro_setup()
+        elif model_name == "llama-2-7b":
+            ACTIVE_MODELS[model_name] = llama_setup()
+        elif model_name == "ollama":
+            ACTIVE_MODELS[model_name] = ollama_setup()
         else:
             raise ValueError("Invalid Model")
-    return ACTIVE_MODELS[model]
+    return ACTIVE_MODELS[model_name]
 
 
 def huggingface_setup():
@@ -206,8 +210,36 @@ def llama_setup():
     )
 
     print("Llama Model Loaded in:", timeit.default_timer() - llama_start)
-
     return generator
+
+
+def ollama_setup():
+    import ollama
+
+    class OllamaModel:
+        """
+        Custom handle to manage OllamaModel and history
+        """
+        def __init__(self, model_name):
+            self.messages = []
+            self.model_name = model_name
+            os.system('start cmd /c ollama serve')
+
+        def __str__(self):
+            return self.model_name
+
+        def invoke(self, prompt: str) -> str:
+            self.messages.append({'role': 'user', 'content': prompt})
+            response = ollama.chat(
+                model=self.model_name,
+                messages=self.messages,
+            )
+            return response['message']['content']
+
+        def clearChat(self):
+            self.messages = []
+
+    return OllamaModel("llama3")
 
 
 def query(query_text: str, model_name: str, *, k: int = 10, db: Chroma = None, use_keybert=False,
@@ -235,67 +267,68 @@ def query(query_text: str, model_name: str, *, k: int = 10, db: Chroma = None, u
     keywords = ''
     context_questions = ''
     keyllm_words = ''
+    if k > 0:
+        if use_keybert:
+            # Using KeyBert
+            kw_model = KeyBERT()
+            keywords = ','.join([i for i, j in kw_model.extract_keywords(query_text)])
+            print("KeyBert Keywords", keywords)
+        if use_hugging_for_kw:
+            # Using HuggingFace - without keybert.keyllm
+            context_template = ChatPromptTemplate.from_template(CONTEXT_TEMPLATE)
+            context = context_template.format(question=query_text)
+            context_questions = prompt_model(context, "huggingface")
+            context_questions = context_questions.strip().lower()
+            print(f"HuggingLLM Keywords: {context_questions}")
+            if len(context_questions) >= 100:
+                context_questions = context_questions[:100] + context_questions[
+                                                              100:(100 + context_questions[100:].find(","))]
 
-    if use_keybert:
-        # Using KeyBert
-        keywords = ','.join([i for i, j in kw_model.extract_keywords(query_text)])
-        print("KeyBert Keywords", keywords)
+            if " none " in context_questions or '\"none\"' in context_questions or "'none'" in context_questions:
+                context_questions = 'none'
+        # Using LLama - with keybert.keyllm
+        if use_keyllm:
+            global kw_llm
+            if kw_llm is None:
+                prompt = """
+                <s>[INST] <<SYS>>
+        
+                You are a helpful assistant specialized in extracting comma-separated keywords.
+                You are to the point and only give the answer in isolation without any chat-based fluff.
+        
+                <</SYS>>
+                I have the following document:
+                - The website mentions that it only takes a couple of days to deliver but I still have not received mine.
+        
+                Please give me the keywords that are present in this document and separate them with commas.
+                Make sure you to only return the keywords and say nothing else. For example, don't say: 
+                "Here are the keywords present in the document"
+                [/INST] meat, beef, eat, eating, emissions, steak, food, health, processed, chicken [INST]
+        
+                I have the following document:
+                - [DOCUMENT]
+        
+                Please give me the keywords that are present in this document and separate them with commas.
+                Make sure you to only return the keywords and say nothing else. For example, don't say: 
+                "Here are the keywords present in the document"
+                [/INST]
+                """
+                key_llm = TextGeneration(load_model("llama-2-7b"), prompt=prompt)
+                kw_llm = KeyLLM(key_llm)
+            keyllm_words = ','.join([','.join(i) for i in kw_llm.extract_keywords(query_text)]) + ','
+            print("KeyLLM Keywords :", keyllm_words)
 
-    if use_hugging_for_kw:
-        # Using HuggingFace - without keybert.keyllm
-        context_template = ChatPromptTemplate.from_template(CONTEXT_TEMPLATE)
-        context = context_template.format(question=query_text)
-        context_questions = prompt_model(context, "huggingface")
-        context_questions = context_questions.strip().lower()
-        print(f"HuggingLLM Keywords: {context_questions}")
-        if len(context_questions) >= 100:
-            context_questions = context_questions[:100] + context_questions[
-                                                          100:(100 + context_questions[100:].find(","))]
+        print('\n')
 
-        if " none " in context_questions or '\"none\"' in context_questions or "'none'" in context_questions:
-            context_questions = 'None'
+        keywords += f",{keyllm_words}{context_questions.strip()}".strip(' []()!.\t\n,`\'\"')
+        print(f"Final Keywords: {keywords}")
 
-    # Using LLama - with keybert.keyllm
-    if use_keyllm:
-        global kw_llm
-        if kw_llm is None:
-            prompt = """
-            <s>[INST] <<SYS>>
-    
-            You are a helpful assistant specialized in extracting comma-separated keywords.
-            You are to the point and only give the answer in isolation without any chat-based fluff.
-    
-            <</SYS>>
-            I have the following document:
-            - The website mentions that it only takes a couple of days to deliver but I still have not received mine.
-    
-            Please give me the keywords that are present in this document and separate them with commas.
-            Make sure you to only return the keywords and say nothing else. For example, don't say: 
-            "Here are the keywords present in the document"
-            [/INST] meat, beef, eat, eating, emissions, steak, food, health, processed, chicken [INST]
-    
-            I have the following document:
-            - [DOCUMENT]
-    
-            Please give me the keywords that are present in this document and separate them with commas.
-            Make sure you to only return the keywords and say nothing else. For example, don't say: 
-            "Here are the keywords present in the document"
-            [/INST]
-            """
-            key_llm = TextGeneration(load_model("llama-2-7b"), prompt=prompt)
-            kw_llm = KeyLLM(key_llm)
-        keyllm_words = ','.join([','.join(i) for i in kw_llm.extract_keywords(query_text)]) + ','
-        print("KeyLLM Keywords :", keyllm_words)
-
-    print('\n')
-
-    keywords += f",{keyllm_words}{context_questions.strip()}".strip(' []()!.\t\n,`\'\"')
-    print(f"Final Keywords: {keywords}")
-
-    if keywords and context_questions != "None":
-        results = db.similarity_search_with_relevance_scores(keywords, k=k)
+        if context_questions == 'none':
+            results = []  # No Keywords!
+        else:
+            results = db.similarity_search_with_relevance_scores(query_text, k=k)
     else:
-        results = db.similarity_search_with_relevance_scores(query_text, k=k)
+        results = []
 
     # Check for no results or low accuracy
     if len(results) == 0 or results[0][1] < 0.4:
@@ -303,9 +336,9 @@ def query(query_text: str, model_name: str, *, k: int = 10, db: Chroma = None, u
         prompt = prompt_template.format(question=query_text, context='')
         sources = []
     else:
-        print("Accuracy is:", results[0][1])
         # Add Context and Query to Prompt Template
         context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
+        print("Accuracy is:", results[0][1])
         print(f"\nCONTEXT:\n{context_text}\n\n")
         prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
         prompt = prompt_template.format(context=context_text, question=query_text)
@@ -320,16 +353,14 @@ def query(query_text: str, model_name: str, *, k: int = 10, db: Chroma = None, u
 
 
 if __name__ == "__main__":
-    # while True:
-    #     print(prompt_model(model_name="llama-2-7b", prompt=input("Enter Query: ")))
-
-    load_model("huggingface")
-    # while True:
+    # Testing
+    query_model_name = "ollama"
+    load_model(query_model_name)
 
     inp = input("\nEnter prompt: ")
     start = timeit.default_timer()
     print("Processing .... / \n")
-    prompt_response, sources_used = query(inp, "huggingface")
+    prompt_response, sources_used = query(inp, query_model_name)
     # print(prompt_response) Already printed in prompt...
 
     print(" \n\n Time Taken:", timeit.default_timer() - start)

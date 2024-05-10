@@ -9,10 +9,12 @@ about Carbon Capture
 ```pip install -r requirements.txt```
 
 2. Create a .env file in the root directory and add your HuggingFace API Key:\
-```HUGGINGFACEHUB_API_TOKEN="YOUR_HUGGING_FACE_API_TOKEN"```
+```HUGGINGFACEHUB_API_TOKEN="YOUR_HUGGING_FACE_API_TOKEN"```\
+If you still face issues, try logging in by entering ```huggingface-cli login```in the terminal
 
 3. For the first run, to create a Vector Database, run \
-```py create_database.py```
+```py create_database.py```\
+Add your files in "data\pdfs"
 
 4. Run the GUI using the following command\
 ```streamlit run GUI.py```

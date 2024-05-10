@@ -8,11 +8,13 @@ from langchain_community.document_loaders import DirectoryLoader  # Load md file
 from langchain.text_splitter import RecursiveCharacterTextSplitter  # Split Document into Chunks
 from langchain.schema import Document
 
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-# from langchain_community.embeddings import HuggingFaceEmbeddings  # Embedding Function
-# from langchain_community.embeddings.sentence_transformer import SentenceTransformerEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings  # Embedding Function
+from langchain_community.embeddings.sentence_transformer import SentenceTransformerEmbeddings
+# from langchain_community.embeddings import HuggingFaceEmbeddings
+
 from langchain.vectorstores.chroma import Chroma  # Vector Storage
 
+import pydantic.v1.error_wrappers  # Error Wrapper
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,13 +23,16 @@ CHROMA_PATH = "chroma"
 PDF_PATH = "data/pdfs"
 MARKDOWN_PATH = 'data/markdowns/'
 
-# Embedding uses model "all-MiniLM-L6-v2" by default
-# Select Model from https://www.sbert.net/docs/pretrained_models.html
-# Runs Locally
-# embedding_function = SentenceTransformerEmbeddings(model_name="all-mpnet-base-v2", multi_process=True,
-#                                                    model_kwargs={"device": "cuda", },
-#                                                    encode_kwargs={"normalize_embeddings": True})
-embedding_function = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+try:
+    embedding_function = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+except pydantic.v1.error_wrappers.ValidationError:
+    print("GOOGLE_API_KEY Not found, using SentenceTransformers instead")
+    # Embedding uses model "all-MiniLM-L6-v2" by default
+    # Select Model from https://www.sbert.net/docs/pretrained_models.html
+    # Runs Locally
+    embedding_function = SentenceTransformerEmbeddings(model_name="all-mpnet-base-v2", multi_process=True,
+                                                       model_kwargs={"device": "cuda", },
+                                                       encode_kwargs={"normalize_embeddings": True})
 
 
 # .pdf TO .md

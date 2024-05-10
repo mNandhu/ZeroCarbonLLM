@@ -19,7 +19,7 @@ message(query_data.GREET_MESSAGE, key='0_startup')
 
 st.sidebar.title("Settings")
 model_name = st.sidebar.radio("Choose a model:", query_data.ALL_MODELS).lower()
-k_queries = st.sidebar.slider("Queries to retrieve from db", 3, 20, 8,
+k_queries = st.sidebar.slider("Queries to retrieve from db", 0, 20, 8,
                               help="Number of Queries affects the accuracy of the model, depends on the documents "
                                    "embedded")
 st.sidebar.write("KeyWord Extraction")
@@ -27,12 +27,14 @@ use_hugging_for_kw = st.sidebar.checkbox("Use HuggingFaceLLM", value=True, help=
                                                                                 "\"HuggingFace/zephyr-7b-beta\" model "
                                                                                 "to extract the "
                                                                                 "keywords from the prompt to "
-                                                                                "efficiently lookup in the database")
+                                                                                "efficiently lookup in the database",
+                                         disabled=k_queries < 1)
 
 use_keybert = st.sidebar.checkbox("Use KeyBert", help="Checking this box uses the Keybert module to extract the "
-                                                      "keywords. This does not use an LLM")
+                                                      "keywords. This does not use an LLM", disabled=k_queries < 1)
+
 use_keyllm = st.sidebar.checkbox("Use KeyLLM", help="Checking this box uses a local llama-2-7b model to extract the "
-                                                    "keywords from the prompt ")
+                                                    "keywords from the prompt ", disabled=k_queries < 1)
 clear_button = st.sidebar.button("Clear Conversation", key="clear")
 
 # Load the model
@@ -56,10 +58,10 @@ def generate_response(prompt, query_model_name, k, keybert, keyhugging, keyllm):
                                          use_hugging_for_kw=keyhugging, use_keyllm=keyllm)
 
     if sources:
-        response += "\n\nSources : " + ', '.join(
+        response += "\n\nSources🔬 : " + ', '.join(
             [f"{index}.{source}" for index, source in enumerate(sources, start=1)])
     else:
-        response += "\n\nNote: No Sources used \n May not be entirely accurate"
+        response += "\n\n⚠️No Sources used"
     st.session_state['messages'].append({"role": "assistant", "content": f'{response}'})
 
     # print(st.session_state['messages'])
