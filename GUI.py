@@ -15,7 +15,7 @@ if 'messages' not in st.session_state:
     st.session_state['messages'] = [
         {"role": "system", "content": "You are a helpful assistant."}, ]
 
-message(query_data.GREET_MESSAGE, key='0_startup')
+message(query_data.GREET_MESSAGE, key='0_startup', avatar_style='lorelei-neutral', seed='Gizmo')
 
 st.sidebar.title("Settings")
 model_name = st.sidebar.radio("Choose a model:", query_data.ALL_MODELS).lower()
@@ -86,5 +86,6 @@ with container:
 if st.session_state['generated']:
     with response_container:
         for i in range(len(st.session_state['generated'])):
-            message(st.session_state["past"][i], is_user=True, key=str(i) + '_user')
-            message(st.session_state["generated"][i], key=str(i))
+            message(st.session_state["past"][i], is_user=True, key=str(i) + '_user', avatar_style='lorelei',
+                    seed='Leo')
+            message(st.session_state["generated"][i], key=str(i), avatar_style='fun-emoji', seed='Sammy')

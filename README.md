@@ -7,6 +7,7 @@ It was an awesome experience working on this project, and me and my team look fo
 more fun projects in the future!
 
 ![image](/images/prompt_example.png)
+---
 ## Installation
 1. Install the required packages:\
 ```pip install -r requirements.txt```
@@ -24,11 +25,13 @@ Add texts in "data\texts" (Optional)(Text files are not preprocessed)
 
 4. Run the GUI using the following command\
 ```streamlit run GUI.py```
-
+---
 ## Working
+![image](/images/flowdiagram.png)
 
-
-
+Gemini QA-Pair generation is not a part of this code, please visit [Google AI Studio](https://aistudio.google.com)
+and generate QP pairs with a PDF and add response to the text folder!
+---
 ## Note
 
 You may face dependency issues with multiple modules used in this program
