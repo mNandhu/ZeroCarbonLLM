@@ -8,4 +8,5 @@ pymupdf>=1.24.0
 keybert~=0.8.4
 transformers~=4.39.3
 google-generativeai~=0.5.0
+unstructured[md]
 ollama

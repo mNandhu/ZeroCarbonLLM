@@ -80,12 +80,15 @@ def to_markdown(doc: fitz.Document, pages: list = None) -> str:
             # maps a fontsize to a string of multiple # header tag characters
             self.header_id = {}
             if body_limit is None:  # body text fontsize if not provided
-                body_limit = sorted(
-                    [(k, v) for k, v in fontsizes.items()],
-                    key=lambda i: i[1],
-                    reverse=True,
-                )[0][0]
-
+                if fontsizes:
+                    body_limit = sorted(
+                        [(k, v) for k, v in fontsizes.items()],
+                        key=lambda i: i[1],
+                        reverse=True,
+                    )[0][0]
+                else:
+                    print("PDF has errors, may not be converted properly")
+                    body_limit = 16  # Some randomValue that I added
             sizes = sorted(
                 [f for f in fontsizes.keys() if f > body_limit], reverse=True
             )
@@ -345,4 +348,4 @@ if __name__ == "__main__":
     out.write(md_string)
     out.close()
     t1 = time.perf_counter()  # stop timer
-    print(f"Markdown creation time for {doc.name=} {round(t1-t0,2)} sec.")
+    print(f"Markdown creation time for {doc.name=} {round(t1 - t0, 2)} sec.")

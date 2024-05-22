@@ -23,18 +23,16 @@ k_queries = st.sidebar.slider("Queries to retrieve from db", 0, 20, 8,
                               help="Number of Queries affects the accuracy of the model, depends on the documents "
                                    "embedded")
 st.sidebar.write("KeyWord Extraction")
-use_hugging_for_kw = st.sidebar.checkbox("Use HuggingFaceLLM", value=True, help="Checking this box uses a remote "
-                                                                                "\"HuggingFace/zephyr-7b-beta\" model "
-                                                                                "to extract the "
-                                                                                "keywords from the prompt to "
-                                                                                "efficiently lookup in the database",
+use_hugging_for_kw = st.sidebar.checkbox("Use HuggingFaceLLM", value=False, help="Checking this box uses a remote "
+                                                                                 "\"HuggingFace/zephyr-7b-beta\" model "
+                                                                                 "to extract the "
+                                                                                 "keywords from the prompt to "
+                                                                                 "lookup in the database",
                                          disabled=k_queries < 1)
 
 use_keybert = st.sidebar.checkbox("Use KeyBert", help="Checking this box uses the Keybert module to extract the "
                                                       "keywords. This does not use an LLM", disabled=k_queries < 1)
 
-use_keyllm = st.sidebar.checkbox("Use KeyLLM", help="Checking this box uses a local llama-2-7b model to extract the "
-                                                    "keywords from the prompt ", disabled=k_queries < 1)
 clear_button = st.sidebar.button("Clear Conversation", key="clear")
 
 # Load the model
@@ -51,11 +49,11 @@ if clear_button:
 
 
 # generate a response
-def generate_response(prompt, query_model_name, k, keybert, keyhugging, keyllm):
+def generate_response(prompt, query_model_name, k, keybert, keyhugging):
     st.session_state['messages'].append({"role": "user", "content": prompt})
 
     response, sources = query_data.query(query_text=prompt, model_name=query_model_name, k=k, use_keybert=keybert,
-                                         use_hugging_for_kw=keyhugging, use_keyllm=keyllm)
+                                         use_hugging_for_kw=keyhugging)
 
     if sources:
         response += "\n\nSources🔬 : " + ', '.join(
@@ -81,7 +79,7 @@ with container:
 
     if submit_button and user_input:
         output = generate_response(user_input, model_name, k_queries, keybert=use_keybert,
-                                   keyhugging=use_hugging_for_kw, keyllm=use_keyllm)
+                                   keyhugging=use_hugging_for_kw)
         st.session_state['past'].append(user_input)
         st.session_state['generated'].append(output)
 

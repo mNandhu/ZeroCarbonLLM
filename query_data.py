@@ -1,23 +1,19 @@
 import os.path
+import timeit
 import warnings
-from langchain.vectorstores.chroma import Chroma  # Load VectorDB
-from langchain.prompts import ChatPromptTemplate  # Template for query and context
-from dotenv import load_dotenv  # Load Environment variables - HUGGINGFACE_API
-from keybert import KeyBERT, KeyLLM
-from keybert.llm import TextGeneration
 
+import google.generativeai as genai
+from dotenv import load_dotenv  # Load Environment variables - HUGGINGFACE_API
+from keybert import KeyBERT
+from langchain.prompts import ChatPromptTemplate  # Template for query and context
+from langchain.vectorstores.chroma import Chroma  # Load VectorDB
 from langchain_community.chat_models.huggingface import ChatHuggingFace  # LLM for RAG
 from langchain_community.llms import HuggingFaceHub  # Access HuggingFace LLM using api
-import google.generativeai as genai
-
-import transformers
-import timeit
 
 load_dotenv()
 warnings.simplefilter('ignore')
 
-kw_llm = None
-ALL_MODELS = ("HuggingFace", "gemini-1.0-pro", "llama-2-7b", "ollama")
+ALL_MODELS = ("HuggingFace", "gemini-1.0-pro", "ollama")
 ACTIVE_MODELS = dict.fromkeys([i.lower() for i in ALL_MODELS])
 
 ACTIVE_DB = None
@@ -88,8 +84,24 @@ Currently, I am trained on a small dataset, so I may not be able to answer all y
 Please ask your questions in a clear and concise manner.\
 As of now, I can answer only one question at a time, and have a very short-term memory."""
 
+PROMPT_TEMPLATE_FLW_UP = """
+You are ZeroCarbonLLM. A Large Language Model designed to help on queries related to Carbon Capture.
+You don't know anything other than Carbon Capture\
+If the question given is not clear,politely ask User to ask questions in a clear and concise manner.\
+
+User's Question is : {question}.
+
+This is a follow-up question or a general prompt. Answer based on the previous context."""
+
 
 def prompt_model(prompt: str, model_name: str):
+    """
+    Prompt the model with the given text.
+    Prints the response in the console
+    :param prompt: Prompt
+    :param model_name: ChatModel
+    :return: Response
+    """
     model = load_model(model_name)
     match model_name:
         case "huggingface":
@@ -101,12 +113,8 @@ def prompt_model(prompt: str, model_name: str):
             # Gemini
             model.send_message(prompt)
             model_output = model.last.text
-        case "llama-2-7b":
-            # Llama
-            print("LLAMA PROMPT: ", prompt[:200] + "...")
-            model_output = model.predict(prompt)
-            model_output = model_output[0]['generated_text']
         case "ollama":
+            # Ollama-Llama3
             model_output = model.invoke(prompt)
         case _:
             print(f"Invalid {model_name=}")
@@ -115,17 +123,17 @@ def prompt_model(prompt: str, model_name: str):
     return model_output
 
 
-def get_db() -> Chroma:
+def get_default_db() -> Chroma:
     """
-    Load the Chroma DB
+    Load default Chroma DB
     :return: Chroma
     """
-    from create_database import embedding_function
-    db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embedding_function)
+    from create_database import getEmbeddingFunction
+    db = Chroma(persist_directory=CHROMA_PATH, embedding_function=getEmbeddingFunction())
     return db
 
 
-def load_model(model_name: str, *, reset=False) -> ChatHuggingFace | genai.ChatSession | transformers.Pipeline:
+def load_model(model_name: str, *, reset=False) -> ChatHuggingFace | genai.ChatSession:
     """
     Set up the model or reload ACTIVE_MODELS
     :param model_name: Model Name
@@ -138,8 +146,6 @@ def load_model(model_name: str, *, reset=False) -> ChatHuggingFace | genai.ChatS
             ACTIVE_MODELS[model_name] = huggingface_setup()
         elif model_name == "gemini-1.0-pro":
             ACTIVE_MODELS[model_name] = gemini_v1_pro_setup()
-        elif model_name == "llama-2-7b":
-            ACTIVE_MODELS[model_name] = llama_setup()
         elif model_name == "ollama":
             ACTIVE_MODELS[model_name] = ollama_setup()
         else:
@@ -147,79 +153,54 @@ def load_model(model_name: str, *, reset=False) -> ChatHuggingFace | genai.ChatS
     return ACTIVE_MODELS[model_name]
 
 
-def huggingface_setup():
-    llm = HuggingFaceHub(repo_id="HuggingFaceH4/zephyr-7b-beta",
-                         task="text-generation",
+def huggingface_setup() -> ChatHuggingFace:
+    """
+    Set up the HuggingFace Model
+    :return: ChatHuggingFace
+    """
+    llm = HuggingFaceHub(repo_id="HuggingFaceH4/zephyr-7b-beta", task="text-generation",
                          model_kwargs={"max_new_tokens": 2048, "top_k": 30, "temperature": 0.05,
                                        "repetition_penalty": 1.2, })
     model = ChatHuggingFace(llm=llm)
     return model
 
 
-def gemini_v1_pro_setup():
-    genai.configure(api_key=os.getenv("GEN_API_KEY"))
+def gemini_v1_pro_setup() -> genai.ChatSession:
+    """
+    Set up the Gemini Model
+    :return: ChatSession
+    """
 
     # Set up the model
+    genai.configure(api_key=os.getenv("GEN_API_KEY"))
     generation_config = {"temperature": 0.1, "top_k": 30, "max_output_tokens": 4096}
 
-    safety_settings = [{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-                       {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-                       {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-                       {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"}, ]
+    safety_settings = [{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"},
+                       {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"},
+                       {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"},
+                       {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"}, ]
 
     # noinspection PyTypeChecker
     model = genai.GenerativeModel(model_name="gemini-1.0-pro", generation_config=generation_config,
                                   safety_settings=safety_settings)
 
-    convo = model.start_chat(history=[])
-    return convo  # convo.send_message(prompt)  # print(convo.last.text)
-
-
-def llama_setup():
-    from torch import bfloat16
-    llama_start = timeit.default_timer()
-    model_id = 'meta-llama/Llama-2-7b-chat-hf'
-    # model_id = 'HuggingFaceH4/zephyr-7b-alpha'
-
-    # 4-bit Quantization to load Llama 2 with less GPU memory
-    bnb_config = transformers.BitsAndBytesConfig(
-        load_in_4bit=True,
-        load_in_8bit_fp32_cpu_offload=True,
-        bnb_4bit_quant_type='nf4',
-        bnb_4bit_use_double_quant=True,
-        bnb_4bit_compute_dtype=bfloat16
-    )
-
-    # Llama 2 Model & Tokenizer
-    tokenizer = transformers.AutoTokenizer.from_pretrained(model_id)
-    model = transformers.AutoModelForCausalLM.from_pretrained(
-        model_id,
-        trust_remote_code=True,
-        quantization_config=bnb_config,
-        device_map='cuda',
-    )
-    model.eval()
-
-    # Our text generator
-    generator = transformers.pipeline(
-        model=model, tokenizer=tokenizer,
-        task='text-generation',
-        temperature=0.1,
-        max_new_tokens=4096,
-        repetition_penalty=1.1
-    )
-
-    print("Llama Model Loaded in:", timeit.default_timer() - llama_start)
-    return generator
+    convo = model.start_chat(history=[])  # convo.send_message(prompt)  # print(convo.last.text)
+    return convo
 
 
 def ollama_setup():
+    """
+    Set up the Ollama Model
+    :return: OllamaModel
+    """
     import ollama
+    import os
 
     class OllamaModel:
         """
         Custom handle to manage OllamaModel and history
         """
+
         def __init__(self, model_name):
             self.messages = []
             self.model_name = model_name
@@ -230,11 +211,15 @@ def ollama_setup():
 
         def invoke(self, prompt: str) -> str:
             self.messages.append({'role': 'user', 'content': prompt})
-            response = ollama.chat(
-                model=self.model_name,
-                messages=self.messages,
-            )
-            return response['message']['content']
+            try:
+                response = ollama.chat(model=self.model_name, messages=self.messages, )
+            except ollama.ResponseError:
+                print("Model not found! Trying to pull it")
+                ollama.pull(self.model_name)
+                self.invoke(prompt)
+            else:
+                self.messages.append(response['message'])
+                return response['message']['content']
 
         def clearChat(self):
             self.messages = []
@@ -243,30 +228,28 @@ def ollama_setup():
 
 
 def query(query_text: str, model_name: str, *, k: int = 10, db: Chroma = None, use_keybert=False,
-          use_hugging_for_kw=True,
-          use_keyllm=False) -> tuple[str, list[str]]:
+          use_hugging_for_kw=True, ) -> tuple[str, list[str]]:
     """
     Query the model with the given text
     :param query_text: Prompt
     :param model_name: ChatModel
     :param k: Number of queries to retrieve from ChromaDB
-    :param db: Chroma DB to load
+    :param db: Chroma DB to load (If not provided, it will load the default DB from CHROMA_PATH)
     :param use_keybert: Use KeyBert to extract keywords
     :param use_hugging_for_kw: Use HuggingFaceLLM to extract keywords
-    :param use_keyllm: Use keybert.keyllm(llama) to extract keywords
     :return: (Response,Sources)
     """
 
     if db is None:
         global ACTIVE_DB
         if ACTIVE_DB is None:
-            ACTIVE_DB = get_db()
+            ACTIVE_DB = get_default_db()
         db = ACTIVE_DB
 
     # Get the keywords
     keywords = ''
     context_questions = ''
-    keyllm_words = ''
+
     if k > 0:
         if use_keybert:
             # Using KeyBert
@@ -274,7 +257,7 @@ def query(query_text: str, model_name: str, *, k: int = 10, db: Chroma = None, u
             keywords = ','.join([i for i, j in kw_model.extract_keywords(query_text)])
             print("KeyBert Keywords", keywords)
         if use_hugging_for_kw:
-            # Using HuggingFace - without keybert.keyllm
+            # Using HuggingFace
             context_template = ChatPromptTemplate.from_template(CONTEXT_TEMPLATE)
             context = context_template.format(question=query_text)
             context_questions = prompt_model(context, "huggingface")
@@ -286,41 +269,10 @@ def query(query_text: str, model_name: str, *, k: int = 10, db: Chroma = None, u
 
             if " none " in context_questions or '\"none\"' in context_questions or "'none'" in context_questions:
                 context_questions = 'none'
-        # Using LLama - with keybert.keyllm
-        if use_keyllm:
-            global kw_llm
-            if kw_llm is None:
-                prompt = """
-                <s>[INST] <<SYS>>
-        
-                You are a helpful assistant specialized in extracting comma-separated keywords.
-                You are to the point and only give the answer in isolation without any chat-based fluff.
-        
-                <</SYS>>
-                I have the following document:
-                - The website mentions that it only takes a couple of days to deliver but I still have not received mine.
-        
-                Please give me the keywords that are present in this document and separate them with commas.
-                Make sure you to only return the keywords and say nothing else. For example, don't say: 
-                "Here are the keywords present in the document"
-                [/INST] meat, beef, eat, eating, emissions, steak, food, health, processed, chicken [INST]
-        
-                I have the following document:
-                - [DOCUMENT]
-        
-                Please give me the keywords that are present in this document and separate them with commas.
-                Make sure you to only return the keywords and say nothing else. For example, don't say: 
-                "Here are the keywords present in the document"
-                [/INST]
-                """
-                key_llm = TextGeneration(load_model("llama-2-7b"), prompt=prompt)
-                kw_llm = KeyLLM(key_llm)
-            keyllm_words = ','.join([','.join(i) for i in kw_llm.extract_keywords(query_text)]) + ','
-            print("KeyLLM Keywords :", keyllm_words)
 
         print('\n')
 
-        keywords += f",{keyllm_words}{context_questions.strip()}".strip(' []()!.\t\n,`\'\"')
+        keywords += f",{context_questions.strip()}".strip(' []()!.\t\n,`\'\"')
         print(f"Final Keywords: {keywords}")
 
         if context_questions == 'none':
@@ -330,9 +282,13 @@ def query(query_text: str, model_name: str, *, k: int = 10, db: Chroma = None, u
     else:
         results = []
 
-    # Check for no results or low accuracy
+    # Check for Follow-up or no results or low accuracy
     if len(results) == 0 or results[0][1] < 0.4:
-        prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE_2)
+        if k < 1:
+            prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE_FLW_UP)  # Follow-up
+        else:
+            prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE_2)  # No Results
+
         prompt = prompt_template.format(question=query_text, context='')
         sources = []
     else:
@@ -353,14 +309,13 @@ def query(query_text: str, model_name: str, *, k: int = 10, db: Chroma = None, u
 
 
 if __name__ == "__main__":
-    # Testing
-    query_model_name = "ollama"
+    print("For Testing only, run \"streamlit run GUI.py\" to use the GUI.")
+
+    query_model_name = "ollama"  # Ollama uses llama3 by default
     load_model(query_model_name)
 
     inp = input("\nEnter prompt: ")
     start = timeit.default_timer()
     print("Processing .... / \n")
     prompt_response, sources_used = query(inp, query_model_name)
-    # print(prompt_response) Already printed in prompt...
-
     print(" \n\n Time Taken:", timeit.default_timer() - start)
