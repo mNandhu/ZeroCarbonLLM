@@ -10,3 +10,5 @@ transformers~=4.39.3
 google-generativeai~=0.5.0
 unstructured[md]
 ollama
+torch~=2.3.0
+pydantic~=2.7.1

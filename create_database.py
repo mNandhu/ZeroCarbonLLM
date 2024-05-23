@@ -26,7 +26,7 @@ The script creates the following files:
 1. chroma: The directory containing the Chroma database
 """
 
-import os
+import os   # File Handling
 import shutil  # Deleting Existing Vector Embeddings
 import timeit  # For Timing the Program
 from pathlib import Path  # Path Handling
@@ -189,7 +189,7 @@ def load_md() -> list[Document]:
     return documents
 
 
-def split_text(documents: list[Document], chunk_size=3500, chunk_overlap=1000) -> list[Document]:
+def split_text(documents: list[Document], chunk_size: int = 3500, chunk_overlap: int = 1000) -> list[Document]:
     """
     Split the documents into chunks.
     :param documents: List of documents to split
