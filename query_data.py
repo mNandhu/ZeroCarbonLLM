@@ -27,10 +27,11 @@ class QueryHandler:
         self.db = db if db else self.get_default_db()
 
         # Model Name : Model Type ; Initialized with default params
-        self.ALL_MODELS = {"HuggingFace/Zephyr": "huggingface", "Gemini V1 Pro": "gemini-1.0-pro", "Llama 3": "ollama"}
+        self.ALL_MODELS = {"HuggingFace/Zephyr": "huggingface", "Gemini V1 Pro": "gemini-1.0-pro", "Llama 3": "ollama",
+                           "Llama3-API": "groq"}
 
-        self.kw_llm = "ollama"  # Type of LLM for keyword extraction
-        self.relv_llm = "huggingface"  # Type of LLM for relevance filtering
+        self.kw_llm = "groq"  # Type of LLM for keyword extraction
+        # self.relv_llm = "groq"  # Type of LLM for relevance filtering (temporarily forced fixed to groq\llama3-70B)
 
     @staticmethod
     def get_default_db() -> Chroma:
@@ -121,15 +122,16 @@ class QueryHandler:
         for doc, score in results:
             prompt_with_content = prompt_template.format(context=doc.page_content, question=prompt)
             try:
-                self.model_handler.load_model("relevanceLLM", self.relv_llm)
+                self.model_handler.load_model("relevanceLLM", "groq", query_model="llama3-8b-8192",
+                                              output_format="json")
                 response = self.model_handler.prompt_model(prompt_with_content, "relevanceLLM", echo=False)
                 print(repr(response))
                 response = json.loads(response[response.find("{"):response.find("}") + 1])
             except json.JSONDecodeError:
-                print("Error decoding json, using llama3 instead")
+                print("Error decoding json, using ollama/llama3 instead")
                 self.model_handler.load_model("jsonModel", "ollama", reset=False, query_model="llama3",
                                               output_format="json")
-                response = self.model_handler.prompt_model(prompt_with_content, "ollama_json", echo=False)
+                response = self.model_handler.prompt_model(prompt_with_content, "jsonModel", echo=False)
             finally:
                 if response.get("score") in ["yes", True]:
                     filtered_docs.append((doc, score))

@@ -26,11 +26,15 @@ class ModelHandler:
         else:
             model_type, model = model_info
             match model_type:
-                case "huggingface":
-                    # HuggingFace
-                    response_text = model.invoke(prompt)
-                    assistant_output = response_text.content[response_text.content.rfind("<|assistant|>"):]
-                    model_output = f"{assistant_output[13:]}".strip()
+                case model_type if model_type in ["huggingface", "groq"]:
+                    # Langchain (HuggingFace, Groq)
+                    model.run(prompt)
+                    response = model.memory.chat_memory.messages[-1].content
+                    if "<|assistant|>" in response:
+                        assistant_output = response[response.rfind("<|assistant|>"):]
+                        model_output = f"{assistant_output[13:]}".strip()
+                    else:
+                        model_output = response
                 case "gemini-1.0-pro":
                     # Gemini
                     model.send_message(prompt)
@@ -70,20 +74,26 @@ class ModelHandler:
         :return: Model Setup Function Handle
         """
 
-        def huggingface_setup():
+        def huggingface_setup(repo_id="HuggingFaceH4/zephyr-7b-beta", temperature=0.5):
             from langchain_community.chat_models.huggingface import ChatHuggingFace  # LLM for RAG
             from langchain_community.llms import HuggingFaceHub  # Access HuggingFace LLM using api
+            from langchain import ConversationChain  # Conversation Chain
+            from langchain.memory import ConversationBufferMemory  # Memory for Conversation
             """
             Set up the HuggingFace Model
-            :return: ChatHuggingFace
+            :return: ConversationChain
             """
-            llm = HuggingFaceHub(repo_id="HuggingFaceH4/zephyr-7b-beta", task="text-generation",
-                                 model_kwargs={"max_new_tokens": 2048, "top_k": 30, "temperature": 0.05,
+            llm = HuggingFaceHub(repo_id=repo_id, task="text-generation",
+                                 model_kwargs={"max_new_tokens": 2048, "top_k": 30, "temperature": temperature,
                                                "repetition_penalty": 1.2, })
             model = ChatHuggingFace(llm=llm)
-            return model
+            model_chain = ConversationChain(
+                llm=model,
+                memory=ConversationBufferMemory()
+            )
+            return model_chain
 
-        def gemini_v1_pro_setup():
+        def gemini_v1_pro_setup(temperature=0.1):
             # For Gemini Model
             import google.generativeai as genai
             """
@@ -93,7 +103,7 @@ class ModelHandler:
 
             # Set up the model
             genai.configure(api_key=os.getenv("GEN_API_KEY"))
-            generation_config = {"temperature": 0.1, "top_k": 30, "max_output_tokens": 4096}
+            generation_config = {"temperature": temperature, "top_k": 30, "max_output_tokens": 4096}
 
             safety_settings = [{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"},
                                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"},
@@ -107,7 +117,7 @@ class ModelHandler:
             convo = model.start_chat(history=[])  # convo.send_message(prompt)  # print(convo.last.text)
             return convo
 
-        def ollama_setup(query_model="llama3", output_format=""):
+        def ollama_setup(query_model="llama3", output_format="", temperature=-1):
             """
             Set up the Ollama Model
             :return: OllamaModel
@@ -120,10 +130,11 @@ class ModelHandler:
                 Custom handle to manage OllamaModel and history
                 """
 
-                def __init__(self, model_name, out_format):
+                def __init__(self, model_name, out_format, temp=0.5):
                     self.messages = []
                     self.model_name = model_name
                     self.format = out_format
+                    self.temperature = temperature  # Not yet implemented
                     print("Starting Ollama Server")
                     os.system('start cmd /c ollama serve')
 
@@ -150,8 +161,21 @@ class ModelHandler:
                 def clearChat(self):
                     self.messages = []
 
-            return OllamaModel(query_model, out_format=output_format)
+            return OllamaModel(query_model, out_format=output_format, temp=temperature)
 
-        models = {"huggingface": huggingface_setup, "gemini-1.0-pro": gemini_v1_pro_setup, "ollama": ollama_setup}
+        def groq_setup(query_model="llama3-70b-8192", temperature=0, output_format="text"):
+            from langchain_groq import ChatGroq
+            from langchain import ConversationChain
+            from langchain.memory import ConversationBufferMemory
+            if output_format == "json": output_format = "json_object"
+            model = ChatGroq(temperature=temperature, model_name=query_model, response_format={"type": output_format})
+            model_chain = ConversationChain(
+                llm=model,
+                memory=ConversationBufferMemory()
+            )
+            return model_chain
+
+        models = {"huggingface": huggingface_setup, "gemini-1.0-pro": gemini_v1_pro_setup, "ollama": ollama_setup,
+                  "groq": groq_setup}
 
         return models.get(model_type)
