@@ -14,8 +14,8 @@ class ModelHandler:
         Prompt the model with the given text.
         Prints the response in the console
         :param prompt: Prompt
-        :param echo: Print the response
         :param model_name: ChatModel
+        :param echo: Print the response.
         :return: Response
         """
         model_info = self.ACTIVE_MODELS.get(model_name.lower())  # Get the model's type and name

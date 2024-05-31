@@ -139,8 +139,8 @@ class QueryHandler:
         print(f"Removed {len(results) - len(filtered_docs)} irrelevant documents from {len(results)}")
         return filtered_docs
 
-    def query(self, query_text: str, model_name: str, k: int = 10, use_keybert=False,
-              use_llm_for_kw=True, filter_irrelevant=True, keyword_and_similarity_mix: float = 0.5) \
+    def query(self, query_text: str, model_name: str, k: int = 10, use_keybert: bool = False,
+              use_llm_for_kw: bool = True, filter_irrelevant: bool = True, keyword_and_similarity_mix: float = 0.5) \
             -> tuple[str, list[str]]:
         """
         Query the model with the given text
