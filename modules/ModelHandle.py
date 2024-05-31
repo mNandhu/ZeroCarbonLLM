@@ -179,3 +179,13 @@ class ModelHandler:
                   "groq": groq_setup}
 
         return models.get(model_type)
+
+
+if __name__ == '__main__':
+    model_handle = ModelHandler()
+    model_handle.load_model('llama3', 'ollama')
+
+    query_prompt = input("Prompt: ")
+    while query_prompt:
+        model_handle.prompt_model(query_prompt, 'llama3')
+        query_prompt = input("Prompt: ")
