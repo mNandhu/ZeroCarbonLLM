@@ -26,7 +26,7 @@ The script creates the following files:
 1. chroma: The directory containing the Chroma database
 """
 
-import os   # File Handling
+import os  # File Handling
 import shutil  # Deleting Existing Vector Embeddings
 import timeit  # For Timing the Program
 from pathlib import Path  # Path Handling
@@ -123,8 +123,9 @@ def llamaParse_pdf2md(reset=False):
     paper"""
     parser = LlamaParse(result_type="markdown", parsing_instruction=parsing_instruction)
 
-    if reset and os.path.exists(MARKDOWN_PATH):  # If folder exists, delete and create new
+    if reset:  # If folder exists, delete and create new
         shutil.rmtree(MARKDOWN_PATH)
+    if not os.path.exists(MARKDOWN_PATH):
         os.mkdir(MARKDOWN_PATH)
 
     for file in pdf_search:
