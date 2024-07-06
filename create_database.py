@@ -88,33 +88,35 @@ def getEmbeddingFunction():
     return embedding_function
 
 
-def getTextChunks() -> list[Document]:
+def getTextChunks(text_path=TEXT_PATH) -> list[Document]:
     """
     Load text files and split them into chunks
+    :param text_path: Path to text files
     :return: List of Documents
     """
     print("\n Chunking text files")
-    loader = DirectoryLoader(TEXT_PATH, glob="*.txt")
+    loader = DirectoryLoader(text_path, glob="*.txt")
     documents = loader.load()
     chunks = []
     if documents:
-        chunks = split_text(documents, chunk_size=500, chunk_overlap=50)
+        chunks = split_text(documents, chunk_size=500, chunk_overlap=10)
     return chunks
 
 
-def llamaParse_pdf2md(reset=False):
+def llamaParse_pdf2md(reset=False, pdf_path=PDF_PATH, markdown_path=MARKDOWN_PATH):
     """
     Use LlamaIndex's LlamaParse to summarize PDFs
     Input PDFs from PDF_PATH
     Output as .md in MARKDOWN_PATH
     Only converts missing .md files
-
+    :param pdf_path: Path to PDFs   (Default: data/pdfs)
+    :param markdown_path: Path to store .md files (Default: data/markdowns)
     :param reset: False by Default, If True then delete all files in MARKDOWN_PATH
     """
 
     from llama_parse import LlamaParse
 
-    pdf_search = Path(PDF_PATH).glob("*.pdf")
+    pdf_search = Path(pdf_path).glob("*.pdf")
     parsing_instruction = """The provided document is a research paper focusing on advancements and findings in the 
     field of Carbon Capture. It contains detailed analyses, experimental results, and discussions related to various 
     methods and technologies used for capturing carbon emissions. Exclude references, citations, and author 
@@ -124,43 +126,44 @@ def llamaParse_pdf2md(reset=False):
     parser = LlamaParse(result_type="markdown", parsing_instruction=parsing_instruction)
 
     if reset:  # If folder exists, delete and create new
-        shutil.rmtree(MARKDOWN_PATH)
-    if not os.path.exists(MARKDOWN_PATH):
-        os.mkdir(MARKDOWN_PATH)
+        shutil.rmtree(markdown_path)
+    if not os.path.exists(markdown_path):
+        os.mkdir(markdown_path)
 
     for file in pdf_search:
-        if not os.path.exists(MARKDOWN_PATH + file.name.replace('.pdf', '.md')):
+        if not os.path.exists(markdown_path + file.name.replace('.pdf', '.md')):
             # if input(f"Process the file {file.name} (Y/N)? ").lower() != "y": continue
-            docs = parser.load_data(PDF_PATH + '/' + file.name)
-            with open(MARKDOWN_PATH + file.name.replace('.pdf', '.md'), 'w', encoding="utf-8") as f:
+            docs = parser.load_data(pdf_path + '/' + file.name)
+            with open(markdown_path + file.name.replace('.pdf', '.md'), 'w', encoding="utf-8") as f:
                 for doc in docs:
                     f.write(doc.text)
     else:
         print("All PDFs are converted to .md successfully!")
 
 
-def pyMuPdf_pdf2md(reset=False):
+def pyMuPdf_pdf2md(reset=False, pdf_path=PDF_PATH, markdown_path=MARKDOWN_PATH):
     """
     Deprecated
     Use PyMuPDF to extract text directly from PDFs in PDF_PATH,
     Store as .md in MARKDOWN_PATH
-
+    :param pdf_path: Path to PDFs   (Default: data/pdfs)
+    :param markdown_path: Path to store .md files (Default: data/markdowns)
     :param reset: False by Default, If True then delete all files in MARKDOWN_PATH
     """
 
     import fitz  # To Open PDFs
     from modules.pymupdf_rag import to_markdown  # For Converting PDF to MD
 
-    pdf_search = Path(PDF_PATH).glob("*.pdf")
+    pdf_search = Path(pdf_path).glob("*.pdf")
 
-    if reset and os.path.exists(MARKDOWN_PATH):
-        shutil.rmtree(MARKDOWN_PATH)
-        os.mkdir(MARKDOWN_PATH)
+    if reset and os.path.exists(markdown_path):
+        shutil.rmtree(markdown_path)
+        os.mkdir(markdown_path)
 
     for file in pdf_search:
-        if reset or not os.path.exists(MARKDOWN_PATH + file.name.replace('.pdf', '.md')):
+        if reset or not os.path.exists(markdown_path + file.name.replace('.pdf', '.md')):
             print(f"Converting {file.name} to .md")
-            with open(MARKDOWN_PATH + file.name.replace('.pdf', '.md'), 'w', encoding="utf-8") as f:
+            with open(markdown_path + file.name.replace('.pdf', '.md'), 'w', encoding="utf-8") as f:
                 doc = fitz.open(file)
                 md_text = to_markdown(doc).strip()
                 f.write(md_text)
@@ -180,12 +183,13 @@ def chunk_and_store():
     print("Time Taken:", timeit.default_timer() - start)
 
 
-def load_md() -> list[Document]:
+def load_md(markdown_path=MARKDOWN_PATH) -> list[Document]:
     """
     Load the .md files from the MARKDOWN_PATH
+    :param markdown_path: Path to the .md files
     :return: List of documents
     """
-    loader = DirectoryLoader(MARKDOWN_PATH, glob="*.md")
+    loader = DirectoryLoader(markdown_path, glob="*.md")
     documents = loader.load()
     return documents
 
@@ -211,21 +215,31 @@ def split_text(documents: list[Document], chunk_size: int = 3500, chunk_overlap:
     return chunks
 
 
-def save_to_chroma(chunks: list[Document], reset=True):
+def save_to_chroma(chunks: list[Document], reset=True, chroma_path=CHROMA_PATH):
     """
     Save the chunks to a Chroma database.
     :param chunks: List of documents to save
     :param reset: If True, delete the existing database
+    :param chroma_path: Path to save the database
     """
 
-    if reset and os.path.exists(CHROMA_PATH):  # Clear out the database, if reset
-        shutil.rmtree(CHROMA_PATH)
+    if reset and os.path.exists(chroma_path):  # Clear out the database, if reset
+        shutil.rmtree(chroma_path)
 
     # Create a new DB from the documents.
-    db = Chroma.from_documents(chunks, getEmbeddingFunction(), persist_directory=CHROMA_PATH)
-
+    db = Chroma.from_documents(chunks, getEmbeddingFunction(), persist_directory=chroma_path)
     db.persist()
-    print(f"Saved {len(chunks)} chunks to {CHROMA_PATH}.")
+    print(f"Saved {len(chunks)} chunks to {chroma_path}.")
+
+
+# Utility functions
+def get_embedded_files(chroma_path=CHROMA_PATH) -> list[Path]:
+    """
+    Get the file paths of the documents that have been embedded
+    :return: List of file paths, as absolute paths
+    """
+    db = Chroma(persist_directory=chroma_path, embedding_function=getEmbeddingFunction())
+    return list(set(Path(i['source']) for i in db.get()['metadatas']))
 
 
 if __name__ == "__main__":

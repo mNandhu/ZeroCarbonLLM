@@ -5,7 +5,7 @@ from dotenv import load_dotenv  # Load Environment variables - HUGGINGFACE_API
 from keybert import KeyBERT  # For Keyword Extraction
 from langchain.prompts import ChatPromptTemplate  # Template for query and context
 from langchain.vectorstores.chroma import Chroma  # Load VectorDB
-from langchain.schema import Document  # Document Schema
+from langchain.schema import Document  # Document Schema (for type reference)
 
 # Custom Modules
 import modules.prompt_templates as templates  # Prompt Templates
@@ -27,11 +27,12 @@ class QueryHandler:
         self.db = db if db else self.get_default_db()
 
         # Model Name : Model Type ; Initialized with default params
-        self.ALL_MODELS = {"HuggingFace/Zephyr": "huggingface", "Gemini V1 Pro": "gemini-1.0-pro", "Llama 3": "ollama",
+        self.ALL_MODELS = {"HuggingFace/Zephyr": "huggingface", "Gemini V1 Pro": "gemini-1.0-pro",
+                           "Llama3-Local": "ollama",
                            "Llama3-API": "groq"}
 
         self.kw_llm = "groq"  # Type of LLM for keyword extraction
-        # self.relv_llm = "groq"  # Type of LLM for relevance filtering (temporarily forced fixed to groq\llama3-70B)
+        self.relv_llm = "gemini-1.0-pro"
 
     @staticmethod
     def get_default_db() -> Chroma:
@@ -122,8 +123,7 @@ class QueryHandler:
         for doc, score in results:
             prompt_with_content = prompt_template.format(context=doc.page_content, question=prompt)
             try:
-                self.model_handler.load_model("relevanceLLM", "groq", query_model="llama3-8b-8192",
-                                              output_format="json")
+                self.model_handler.load_model("relevanceLLM", self.relv_llm)
                 response = self.model_handler.prompt_model(prompt_with_content, "relevanceLLM", echo=False)
                 print(repr(response))
                 response = json.loads(response[response.find("{"):response.find("}") + 1])
@@ -134,7 +134,8 @@ class QueryHandler:
                 response = self.model_handler.prompt_model(prompt_with_content, "jsonModel", echo=False)
             finally:
                 if response.get("score") in ["yes", True]:
-                    filtered_docs.append((doc, score))
+                    if doc.page_content not in [i.page_content for i, j in filtered_docs]:
+                        filtered_docs.append((doc, score))
 
         print(f"Removed {len(results) - len(filtered_docs)} irrelevant documents from {len(results)}")
         return filtered_docs
@@ -171,7 +172,7 @@ class QueryHandler:
             results = []
 
         # Check for Follow-up or no results or low accuracy
-        if len(results) == 0 or results[0][1] < 0.4:
+        if len(results) == 0 or results[0][1] < 0.7:
             if k < 1:
                 prompt_template = ChatPromptTemplate.from_template(templates.PROMPT_TEMPLATE_FLW_UP)  # Follow-up
             else:
@@ -203,10 +204,13 @@ if __name__ == "__main__":
     query_handle = QueryHandler()
 
     query_model_name = "any_name"  # Ollama uses llama3 by default
-    query_handle.model_handler.load_model(query_model_name, "huggingface")
+    query_handle.model_handler.load_model(query_model_name, "groq")
 
     inp = input("\nEnter prompt: ")
     start = timeit.default_timer()
     print("Processing .... / \n")
-    prompt_response, sources_used = query_handle.query(inp, query_model_name, use_llm_for_kw=False, k=30)
+    prompt_response, sources_used = query_handle.query(inp, query_model_name,
+                                                       use_llm_for_kw=False,
+                                                       filter_irrelevant=True,
+                                                       k=12)
     print(" \n\n Time Taken:", timeit.default_timer() - start)

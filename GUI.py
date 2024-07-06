@@ -82,6 +82,8 @@ def generate_response(prompt, query_model_name, k, keybert, keyllm, filter_irrel
     if sources:
         response += "\n\nSources🔬 : " + ', '.join(
             [f"{index}.{source}" for index, source in enumerate(sources, start=1)])
+    elif k == 0:
+        response += "\n\n🐣Using Previous Context"
     else:
         response += "\n\n⚠️No Sources used"
     st.session_state['messages'].append({"role": "assistant", "content": f'{response}'})

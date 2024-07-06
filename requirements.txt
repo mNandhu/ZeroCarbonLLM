@@ -1,7 +1,7 @@
-streamlit==1.33.0
+streamlit~=1.36.0
 streamlit-chat
 langchain==0.1.15
-python-dotenv
+python-dotenv~=1.0.1
 langchain-groq
 langchain-google-genai
 langchain-groq
