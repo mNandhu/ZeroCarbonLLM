@@ -88,21 +88,6 @@ def getEmbeddingFunction():
     return embedding_function
 
 
-def getTextChunks(text_path=TEXT_PATH) -> list[Document]:
-    """
-    Load text files and split them into chunks
-    :param text_path: Path to text files
-    :return: List of Documents
-    """
-    print("\n Chunking text files")
-    loader = DirectoryLoader(text_path, glob="*.txt")
-    documents = loader.load()
-    chunks = []
-    if documents:
-        chunks = split_text(documents, chunk_size=500, chunk_overlap=10)
-    return chunks
-
-
 def llamaParse_pdf2md(reset=False, pdf_path=PDF_PATH, markdown_path=MARKDOWN_PATH):
     """
     Use LlamaIndex's LlamaParse to summarize PDFs
@@ -183,14 +168,37 @@ def chunk_and_store():
     print("Time Taken:", timeit.default_timer() - start)
 
 
-def load_md(markdown_path=MARKDOWN_PATH) -> list[Document]:
+def getTextChunks(text_path=TEXT_PATH, include_only: list[str] = None) -> list[Document]:
+    """
+    Load text files and split them into chunks
+    :param text_path: Path to text files
+    :param include_only: List of files that are whitelisted (Optional)
+    :return: List of Documents
+    """
+    print("\n Chunking text files")
+    loader = DirectoryLoader(text_path, glob="*.txt")
+    documents = loader.load()
+
+    chunks = []
+    if documents:
+        if include_only:
+            documents = list(filter(lambda x: os.path.basename(x.metadata["source"]) in include_only, documents))
+        chunks = split_text(documents, chunk_size=500, chunk_overlap=10)
+    return chunks
+
+
+def load_md(markdown_path=MARKDOWN_PATH, include_only: list[str] = None) -> list[Document]:
     """
     Load the .md files from the MARKDOWN_PATH
     :param markdown_path: Path to the .md files
+    :param include_only: List of base name of files that are whitelisted
     :return: List of documents
     """
     loader = DirectoryLoader(markdown_path, glob="*.md")
     documents = loader.load()
+    if include_only:
+        documents = list(filter(lambda x: os.path.basename(x.metadata["source"]) in include_only, documents))
+    print(f"Loaded {len(documents)} documents from {markdown_path}")
     return documents
 
 
@@ -223,11 +231,12 @@ def save_to_chroma(chunks: list[Document], reset=True, chroma_path=CHROMA_PATH):
     :param chroma_path: Path to save the database
     """
 
+    db = Chroma(persist_directory=chroma_path, embedding_function=getEmbeddingFunction())
     if reset and os.path.exists(chroma_path):  # Clear out the database, if reset
-        shutil.rmtree(chroma_path)
+        db.delete_collection()
 
     # Create a new DB from the documents.
-    db = Chroma.from_documents(chunks, getEmbeddingFunction(), persist_directory=chroma_path)
+    db.from_documents(chunks, getEmbeddingFunction(), persist_directory=chroma_path)
     db.persist()
     print(f"Saved {len(chunks)} chunks to {chroma_path}.")
 
@@ -238,8 +247,11 @@ def get_embedded_files(chroma_path=CHROMA_PATH) -> list[Path]:
     Get the file paths of the documents that have been embedded
     :return: List of file paths, as absolute paths
     """
-    db = Chroma(persist_directory=chroma_path, embedding_function=getEmbeddingFunction())
-    return list(set(Path(i['source']) for i in db.get()['metadatas']))
+    data = Chroma(persist_directory=chroma_path, embedding_function=getEmbeddingFunction()).get()
+    if data:
+        return list(set(Path(i['source']) for i in data['metadatas']))
+    else:
+        return []
 
 
 if __name__ == "__main__":

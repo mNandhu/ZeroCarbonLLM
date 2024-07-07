@@ -2,7 +2,6 @@ import streamlit as st
 import os
 from pathlib import Path
 import timeit
-import shutil
 import fitz
 import webbrowser
 
@@ -26,13 +25,18 @@ if 'folder_paths' not in st.session_state:
         "TEXT_PATH": "data/texts"
     }
 
-st.set_page_config(page_title="ZeroCarbonLLM Database Creator", page_icon=":floppy_disk:")
-st.title("ZeroCarbonLLM Database Creator")
+st.set_page_config(page_title="ZeroCarbonLLM - DBM", page_icon=":floppy_disk:")
+st.title("ZeroCarbonLLM Database Manager")
 
 
 # Function to get PDF page count
-def get_page_count(file_path) -> int | str:
-    if file_path.name.endswith(".md"):
+def get_page_count(file_path: Path) -> int:
+    """
+    Get the number of pages in a PDF/Text file
+    If the file is not a PDF or Text file, returns -1
+    :param file_path: Path to the file
+    """
+    if file_path.suffix not in ['.pdf', '.txt']:
         return -1
     else:
         with open(file_path, 'rb') as file:
@@ -41,8 +45,15 @@ def get_page_count(file_path) -> int | str:
 
 
 # Function to display PDF files table
-def display_files_table(files: list[Path] = None, file_path=st.session_state.folder_paths["PDF_PATH"]):
-    if not files:
+def display_files_table(files: list[Path] = None, file_path: str = st.session_state.folder_paths["PDF_PATH"]):
+    """
+    Display a table of files in the given folder as a streamlit dataframe
+    Give either a list of files or the path to the folder
+    Also, allows opening the file in the default application when selected
+    :param files: List of files to display (Default: None)
+    :param file_path: Path to the folder (Default: PDF_PATH)
+    """
+    if files is None:
         files = list(Path(file_path).glob("*.pdf")) + list(Path(file_path).glob("*.txt"))
     else:
         updated_files = []
@@ -73,7 +84,7 @@ def display_files_table(files: list[Path] = None, file_path=st.session_state.fol
     event = st.dataframe(table_data, hide_index=True, use_container_width=True, on_select="rerun",
                          selection_mode="single-row")
     if event['selection']['rows']:
-        webbrowser.open(files[event['selection']['rows'][0]])
+        webbrowser.open(str(files[event['selection']['rows'][0]]))
 
 
 # --- Settings Sidebar ---
@@ -92,55 +103,32 @@ conversion_method = st.sidebar.radio(
 
 # Reset options
 reset_md = st.sidebar.checkbox("Reset Markdown Files", value=False, help="Check this box to delete existing Markdown "
-                                                                         "files. Llamaparse/PyMuPDF"
+                                                                         "files.Otherwise, Llamaparse/PyMuPDF"
                                                                          " will skip the files that "
                                                                          "are already in the markdown folder.")
-reset_db = st.sidebar.checkbox("Reset Database", value=False, help="Check this box to delete the existing Chroma "
-                                                                   "Database while creating a new one, if it exists."
-                                                                   "Same as clicking "
-                                                                   "\"Delete Current Database\" button.")
 
 # Chunk size and overlap
 chunk_size = st.sidebar.slider("Chunk Size", 500, 5000, 3500)
 chunk_overlap = st.sidebar.slider("Chunk Overlap", 0, 1000, 1000)
 
-# --- Sidebar end ---
-
 # --- Main page UI ---
 columns = st.columns([1, 1, 1, 1, 1])
 with columns[0]:
-    create_database_button = st.button("Create Database")
+    create_database_button = st.button("Create new Database")
 with columns[1]:
     reset_database_button = st.button("Delete Current Database")
-
-# Display current database info as an expander
-with st.expander("Current Database Info"):
-    if os.path.exists(st.session_state.folder_paths["CHROMA_PATH"]):
-        st.text(f"Chroma database found at: {os.path.abspath(st.session_state.folder_paths['CHROMA_PATH'])}")
-
-        # Get embedded files and display count
-        embedded_files = get_embedded_files()
-        st.text(f"Total embedded files: {len(embedded_files)}")
-        display_files_table(embedded_files)
-    else:
-        st.text("No existing Chroma database found.")
-
-# Display PDF files table
-st.header("PDF Files")
-display_files_table()
-
-# Add a section for uploading new PDF files
-uploaded_files = st.file_uploader("Upload New PDF Files", accept_multiple_files=True, type="pdf")
-# Add a button to upload the files
-upload_files = st.button("Upload")
+with columns[2]:
+    append_database_button = st.button("Append new files")
 
 # --- Main page processes ---
 if create_database_button:
-    with st.spinner("Creating database..."):
-        start_time = timeit.default_timer()
+    progress_text = "Creating Database. Please Wait.."
 
-        # Step 1: Convert PDFs to Markdown
-        st.text("Step 1: Converting PDFs to Markdown")
+    my_bar = st.progress(0, text=progress_text)
+    start_time = timeit.default_timer()
+
+    # Step 1: Convert PDFs to Markdown
+    with st.spinner("Converting PDFs to Markdown..."):
         if conversion_method == "LlamaParse":
             try:
                 llamaParse_pdf2md(reset=reset_md, markdown_path=st.session_state.folder_paths["MARKDOWN_PATH"],
@@ -153,41 +141,126 @@ if create_database_button:
         else:
             pyMuPdf_pdf2md(reset=reset_md, markdown_path=st.session_state.folder_paths["MARKDOWN_PATH"],
                            pdf_path=st.session_state.folder_paths["PDF_PATH"])
+    my_bar.progress(0.25, text=progress_text)
 
-        # Step 2: Load and chunk Markdown files
-        st.text("Step 2: Loading and chunking Markdown files")
+    # Step 2: Load and chunk Markdown files
+    with st.spinner("Loading and chunking Markdown files"):
         documents = load_md(markdown_path=st.session_state.folder_paths["MARKDOWN_PATH"])
         chunks = split_text(documents, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    my_bar.progress(0.50, text=progress_text)
 
-        # Step 3: Add text chunks
-        st.text("Step 3: Adding text chunks")
+    # Step 3: Add text chunks
+    with st.spinner("Adding text chunks"):
         chunks.extend(getTextChunks(text_path=st.session_state.folder_paths["TEXT_PATH"]))
+    my_bar.progress(0.75, text=progress_text)
 
-        # Step 4: Save to Chroma
-        st.text("Step 4: Saving to Chroma database")
-        save_to_chroma(chunks, reset=reset_db, chroma_path=st.session_state.folder_paths["CHROMA_PATH"])
+    # Step 4: Save to Chroma
+    with st.spinner("Saving to Chroma database"):
+        save_to_chroma(chunks, chroma_path=st.session_state.folder_paths["CHROMA_PATH"])
 
-        end_time = timeit.default_timer()
-        st.success(f"Database created successfully in {end_time - start_time:.2f} seconds!")
+    my_bar.progress(1.0, text="Database creation complete!")
+    end_time = timeit.default_timer()
+    st.toast(f"Database created successfully in {end_time - start_time:.2f} seconds!")
+    st.rerun()
+
 if reset_database_button:
     with st.spinner("Resetting database..."):
-        chroma_path = st.session_state.folder_paths["CHROMA_PATH"]
-        if os.path.exists(chroma_path):  # Clear out the database, if reset
-            try:
-                start_time = timeit.default_timer()
-                st.session_state.folder_paths["CHROMA_PATH"] = None
-                shutil.rmtree(chroma_path)
-                st.session_state.folder_paths["CHROMA_PATH"] = chroma_path
+        start_time = timeit.default_timer()
+        from langchain.vectorstores.chroma import Chroma
 
+        db = Chroma(persist_directory=st.session_state.folder_paths["CHROMA_PATH"])
+        db.delete_collection()
+        end_time = timeit.default_timer()
+        st.toast(f"Database reset successfully in {end_time - start_time:.2f} seconds!")
+        st.rerun()
+
+if append_database_button:
+    progress_text = "Adding new files to Database. Please Wait.."
+
+    my_bar = st.progress(0, text=progress_text)
+    start_time = timeit.default_timer()
+
+    # Step 1: Convert PDFs to Markdown
+    with st.spinner("Converting PDFs to Markdown..."):
+        if conversion_method == "LlamaParse":
+            try:
+                llamaParse_pdf2md(reset=reset_md, markdown_path=st.session_state.folder_paths["MARKDOWN_PATH"],
+                                  pdf_path=st.session_state.folder_paths["PDF_PATH"])
             except Exception as e:
-                st.error(f"Error while deleting Chroma database: {str(e)}")
-            else:
-                end_time = timeit.default_timer()
-                st.success(f"Database reset successfully in {end_time - start_time:.2f} seconds!")
+                st.error(f"Error with LlamaParse: {str(e)}")
+                st.info("Falling back to PyMuPDF...")
+                pyMuPdf_pdf2md(reset=reset_md, markdown_path=st.session_state.folder_paths["MARKDOWN_PATH"],
+                               pdf_path=st.session_state.folder_paths["PDF_PATH"])
         else:
-            st.info("No existing Chroma database found.")
-if uploaded_files and upload_files:
-    for uploaded_file in uploaded_files:
-        with open(os.path.join(st.session_state.folder_paths["PDF_PATH"], uploaded_file.name), "wb") as f:
-            f.write(uploaded_file.getbuffer())
-    st.success(f"Uploaded {len(uploaded_files)} file(s) successfully!")
+            pyMuPdf_pdf2md(reset=reset_md, markdown_path=st.session_state.folder_paths["MARKDOWN_PATH"],
+                           pdf_path=st.session_state.folder_paths["PDF_PATH"])
+    my_bar.progress(0.25, text=progress_text)
+
+    # Step 2: Load and chunk Markdown files
+    with st.spinner("Loading and chunking Markdown files"):
+        documents = load_md(markdown_path=st.session_state.folder_paths["MARKDOWN_PATH"],
+                            include_only=[os.path.basename(file) for file in
+                                          Path(st.session_state.folder_paths["MARKDOWN_PATH"]).glob("*.md")
+                                          if file not in
+                                          get_embedded_files("chroma")])
+        chunks = split_text(documents, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    my_bar.progress(0.50, text=progress_text)
+    # Step 3: Add text chunks
+    with st.spinner(" Adding text chunks"):
+        chunks.extend(getTextChunks(text_path=st.session_state.folder_paths["TEXT_PATH"],
+                                    include_only=[os.path.basename(file) for file in
+                                                  Path(st.session_state.folder_paths["TEXT_PATH"]).glob("*.txt")
+                                                  if file not in
+                                                  get_embedded_files("chroma")]))
+    my_bar.progress(0.75, text=progress_text)
+    # Step 4: Save to Chroma
+    with st.spinner("Saving to Chroma database"):
+        save_to_chroma(chunks, chroma_path=st.session_state.folder_paths["CHROMA_PATH"], reset=False)
+    my_bar.progress(1.0, text="Complete!")
+    end_time = timeit.default_timer()
+    st.toast(f"Files embedded successfully in {end_time - start_time:.2f} seconds!")
+    st.rerun()
+
+# --- Main page UI continued ---
+
+# Display current database info as an expander
+with st.expander("Current Database Info"):
+    if os.path.exists(st.session_state.folder_paths["CHROMA_PATH"]):
+        # Get embedded files and display count
+        embedded_files = get_embedded_files(st.session_state.folder_paths["CHROMA_PATH"])
+        if len(embedded_files) > 0:
+            st.text(f"Chroma database found at: {os.path.abspath(st.session_state.folder_paths['CHROMA_PATH'])}")
+            st.text(f"Total embedded files: {len(embedded_files)}")
+            with st.spinner("Loading embedded files..."):
+                display_files_table(embedded_files)
+        else:
+            st.text("No embedded files found in the Chroma database")
+
+    else:
+        st.text("No existing Chroma database found.")
+
+# Display PDF files/ Text files as tabs
+tab1, tab2 = st.tabs(["PDFs", "Texts"])
+with tab1:
+    st.header("PDF Files")
+    with st.spinner("Loading files in PDF Path..."):
+        display_files_table()
+    uploaded_pdf_files = st.file_uploader("Upload New PDF Files", accept_multiple_files=True, type="pdf")
+    upload_pdfs = st.button("Upload", key="pdf_upload")
+    if upload_pdfs and uploaded_pdf_files:
+        for uploaded_file in uploaded_pdf_files:
+            with open(os.path.join(st.session_state.folder_paths["PDF_PATH"], uploaded_file.name), "wb") as f:
+                f.write(uploaded_file.getbuffer())
+        st.success(f"Uploaded {len(uploaded_pdf_files)} file(s) successfully!")
+
+with tab2:
+    st.header("Text Files")
+    with st.spinner("Loading files in Text Path..."):
+        display_files_table(file_path=st.session_state.folder_paths["TEXT_PATH"])
+    uploaded_text_files = st.file_uploader("Upload New Text Files", accept_multiple_files=True, type="txt")
+    upload_texts = st.button("Upload Text Files", key="text_upload")
+    if upload_texts and uploaded_text_files:
+        for uploaded_file in uploaded_text_files:
+            with open(os.path.join(st.session_state.folder_paths["TEXT_PATH"], uploaded_file.name), "wb") as f:
+                f.write(uploaded_file.getbuffer())
+        st.success(f"Uploaded {len(uploaded_text_files)} file(s) successfully!")
