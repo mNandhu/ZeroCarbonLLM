@@ -202,7 +202,7 @@ if append_database_button:
                             include_only=[os.path.basename(file) for file in
                                           Path(st.session_state.folder_paths["MARKDOWN_PATH"]).glob("*.md")
                                           if file not in
-                                          get_embedded_files("chroma")])
+                                          get_embedded_files("../chroma")])
         chunks = split_text(documents, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     my_bar.progress(0.50, text=progress_text)
     # Step 3: Add text chunks
@@ -211,7 +211,7 @@ if append_database_button:
                                     include_only=[os.path.basename(file) for file in
                                                   Path(st.session_state.folder_paths["TEXT_PATH"]).glob("*.txt")
                                                   if file not in
-                                                  get_embedded_files("chroma")]))
+                                                  get_embedded_files("../chroma")]))
     my_bar.progress(0.75, text=progress_text)
     # Step 4: Save to Chroma
     with st.spinner("Saving to Chroma database"):
