@@ -4,6 +4,34 @@ from typing import Callable, Any  # For Type Hinting
 
 
 class ModelHandler:
+    """
+    Model Handler to manage the models and their history.
+    Usage:
+    1. Load the Model using load_model()
+    2. Prompt the Model using prompt_model()
+
+    Example:
+        model_handle = ModelHandler()
+        model_handle.load_model(model_name="AnyName",model_type="groq")
+        output = model_handle.prompt_model(model_name="groq",prompt="Hey!",echo=False)
+
+    Note: Each model has a unique name (case-insensitive), which can be used to prompt the model.
+     This is done to use multiple models of the same type.
+
+    Model types available by default:
+        1. HuggingFace  (zephyr-7b-beta)
+        2. Gemini-1.0-Pro
+        3. Ollama    (llama3)
+        4. Groq     (llama3-70b-8192)
+
+    To add a new model:
+    1. Add the model setup in __get_model_setup() (as a function which will return any model object)
+    2. Add the model type in __get_model_setup()  (as a key-value pair)
+    3. Add the case for getting the response in prompt_model() (Logic to get the response from the model object)
+
+    Note: Any arguments required for the model setup can be passed as kwargs in load_model()
+    """
+
     def __init__(self):
         # Add a model and its setup in get_model_setup()
         self.ACTIVE_MODELS = dict()
@@ -15,7 +43,7 @@ class ModelHandler:
         Prints the response in the console
         :param prompt: Prompt
         :param model_name: ChatModel
-        :param echo: Print the response.
+        :param echo: If True, Print the response implicitly.
         :return: Response
         """
         model_info = self.ACTIVE_MODELS.get(model_name.lower())  # Get the model's type and name
@@ -42,6 +70,7 @@ class ModelHandler:
                 case "ollama":
                     # Ollama-Llama3
                     model_output = model.invoke(prompt)
+                # Add new models here (case model_type) : model_output = model.invoke(prompt)
                 case _:
                     print(f"Invalid {model_type=}")
         if echo:
@@ -74,6 +103,7 @@ class ModelHandler:
         :return: Model Setup Function Handle
         """
 
+        # Add new model setups here, return any model object ... It can be accessed in prompt_model() as model
         def huggingface_setup(repo_id="HuggingFaceH4/zephyr-7b-beta", temperature=0.5):
             from langchain_community.chat_models.huggingface import ChatHuggingFace  # LLM for RAG
             from langchain_community.llms import HuggingFaceHub  # Access HuggingFace LLM using api
@@ -134,7 +164,7 @@ class ModelHandler:
                     self.messages = []
                     self.model_name = model_name
                     self.format = out_format
-                    self.temperature = temperature  # Not yet implemented
+                    self.temperature = temp  # Not yet implemented
                     print("Starting Ollama Server")
                     os.system('start cmd /c ollama serve')
 
